@@ -10,3 +10,4 @@ It's not super-clever or very efficient, but it does the job.
 
 It doesn't have a daemon mode; run it using cron.
 
+It doesn't serve pages; point apache at its output directory.
