@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 
 # Set up RVM
-source /home/will/.rvm/scripts/rvm
+source /etc/profile.d/rvm.sh
 
 # Get the directory we're running in
 DIR=$(dirname "$(readlink -f $0)")
