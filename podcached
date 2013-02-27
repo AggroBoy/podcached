@@ -1,0 +1,9 @@
+#!/usr/bin/env zsh
+
+# Set up RVM
+source /home/will/.rvm/scripts/rvm
+
+# Get the directory we're running in
+DIR=$(dirname "$(readlink -f $0)")
+
+ruby -I $DIR/lib $DIR/bin/$(basename $0).rb $@
