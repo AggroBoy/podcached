@@ -53,12 +53,27 @@ end
 def sanitize_filename(filename)
     return filename.strip.gsub(/[^:0-9A-Za-z.,\-'" ]/, '_')
 end
+def download_url(url)
+    retries = 5
+
+    begin
+
+        return open(url, :allow_unsafe_redirects => true).read
+
+    rescue OpenURI::HTTPError, Timeout::Error
+        retries -= 1
+        $logger.warn "Error downloading #{url}. #{retries > 0 ? 'retrying' : ''}"
+        retry if retries > 0
+        $logger.error "Retry count exceeded, giving up on downloading #{url}"
+        raise
+    end
+end
 
 def process_rss(feedname, url)
 
     base_uri = $options["base_url"]
 
-    rss = RSS::Parser.parse(open(url, :allow_unsafe_redirects => true), false)
+    rss = RSS::Parser.parse(download_url(url), false)
 
     for item in rss.items
         next if item.enclosure.nil?
@@ -75,20 +90,10 @@ def process_rss(feedname, url)
         if not File::file? filename
             $logger.info "New episode found for #{feedname}. Downloading #{url} to #{filename}"
 
-            retries = 5
-
-            begin
-                data = open(url, :allow_unsafe_redirects => true).read
-                FileUtils.mkdir_p(feedname)
-                open(filename, 'wb') do |file|
-                    file << data
-                end
-            rescue OpenURI::HTTPError, Timeout::Error
-                retries -= 1
-                $logger.warn "Error downloading #{url}. #{retries > 0 ? 'retrying' : ''}"
-                retry if retries > 0
-                $logger.error "Retry count exceeded, giving up on downloading #{url} to #{filename}"
-                next
+            data = download_url(url)
+            FileUtils.mkdir_p(feedname)
+            open(filename, 'wb') do |file|
+                file << data
             end
         end
 
@@ -103,11 +108,17 @@ Dir.chdir $options["local_dir"]
 
 feeds = File.open('/etc/podcached/podcasts').read
 feeds.each_line do |feed|
-    feed.strip!
-    if !feed.empty? and !feed.start_with?("#")
-        name, url = feed.split
-        $logger.debug "processing #{name}"
-        process_rss(name, url)
+    begin
+        feed.strip!
+        if !feed.empty? and !feed.start_with?("#")
+            name, url = feed.split
+            $logger.debug "processing #{name}"
+            process_rss(name, url)
+        end
+
+    rescue Exception => e
+        $logger.error "Error processing feed #{name}: #{e.message}"
+        next
     end
 end
 
