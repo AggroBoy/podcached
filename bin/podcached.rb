@@ -3,6 +3,7 @@ require 'rss/2.0'
 require 'open-uri'
 require 'fileutils'
 require 'yaml'
+require 'builder'
 
 require 'lumberjack'
 require "lumberjack_syslog_device"
@@ -12,6 +13,7 @@ $logger.set_progname "podcached"
 
 $options = YAML.load_file("/etc/podcached/podcachedrc")
 
+$feeds = []
 
 # Allow open-uri to follow unsafe redirects (i.e. https to http).
 # # Relevant issue:
@@ -53,10 +55,11 @@ end
 def sanitize_filename(filename)
     return filename.strip.gsub(/[^:0-9A-Za-z.,\-'" ]/, '_')
 end
+
 def download_url(url)
     retries = 5
 
-    begin
+    begin 
 
         return open(url, :allow_unsafe_redirects => true).read
 
@@ -74,6 +77,11 @@ def process_rss(feedname, url)
     base_uri = $options["base_url"]
 
     rss = RSS::Parser.parse(download_url(url), false)
+
+    # Some feeds leave this empty, which breaks the RSS parser's output
+    rss.channel.description = "N/A" if rss.channel.description.empty?
+
+    $feeds.push({ :feedname => feedname, :title => rss.channel.title, :link => rss.channel.link })
 
     for item in rss.items
         next if item.enclosure.nil?
@@ -98,6 +106,9 @@ def process_rss(feedname, url)
         end
 
         item.enclosure.url = URI::encode(base_uri + filename)
+
+        # Some feeds leave this out - they really *really* shouldn't.
+        item.enclosure.length = File.size?(filename) if item.enclosure.length.nil?
     end
 
     File.open(feedname + "/feed", 'w') {|f| f.write(rss) }
@@ -121,6 +132,19 @@ feeds.each_line do |feed|
         next
     end
 end
+
+opml_file = File.new("podcached.opml", "w")
+builder = Builder::XmlMarkup.new :target => opml_file, :indent => 2
+builder.instruct!
+builder.opml :version => "1.0" do |opml|
+    opml.head { |h| h.title "Podcached Podcasts" }
+    opml.body do |body|
+        $feeds.each do |feed|
+            body.outline :text => feed[:title], :type => "rss", :title => feed[:title], :xmlUrl => "#{$options["base_url"]}#{feed[:feedname]}/feed", :htmlUrl => feed[:link]
+        end
+    end
+end
+opml_file.close
 
 $logger.info "podcached done"
 
