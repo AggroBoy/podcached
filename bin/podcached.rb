@@ -80,6 +80,7 @@ def process_rss(feedname, url)
     rss = RSS::Parser.parse(download_url(url), false)
 
     # Some feeds leave this empty, which breaks the RSS parser's output
+    rss.channel.description = rss.channel.itunes_summary if rss.channel.description.empty?
     rss.channel.description = "N/A" if rss.channel.description.empty?
 
     $feeds.push({ :feedname => feedname, :title => rss.channel.title, :link => rss.channel.link })
