@@ -53,6 +53,13 @@ module OpenURI
     end
 end
 
+#Convinience function for figuring percentages
+class Numeric
+    def percent_of(n)
+        self.to_f / n.to_f * 100.0
+    end
+end
+
 def sanitize_filename(filename)
     return filename.strip.gsub(/[^:0-9A-Za-z.,\-'" ]/, '_')
 end
@@ -71,6 +78,27 @@ def download_url(url)
         $logger.error "Retry count exceeded, giving up on downloading #{url}"
         raise
     end
+end
+
+def file_size_ok?(filename, item)
+    if not item.enclosure.length.nil? and not File::file?("#{filename}.sizeok")
+        percent =  File::size(filename).percent_of(item.enclosure.length.to_i)
+        if percent < 98 then
+            $logger.info "Truncated (#{percent.round}%) episode found: #{filename}"
+            return false
+        end
+    end
+
+    return true
+end
+
+def file_ok?(filename, item)
+
+    return false if not File::file?(filename)
+
+    return false if not file_size_ok?(filename, item)
+
+    return true
 end
 
 def process_rss(feedname, url)
@@ -97,8 +125,11 @@ def process_rss(feedname, url)
         # and title is unique enough
         filename = feedname + "/" + item.pubDate.strftime("%Y-%m-%d %H:%M - ") + sanitize_filename(item.title) + File.extname(url)
 
-        if not File::file? filename
-            $logger.info "New episode found for #{feedname}. Downloading #{url} to #{filename}"
+        # Try to download the file - retry if something goes wrong
+        attempts = 0
+        while attempts < 3 and not file_ok?(filename, item) 
+            attempts += 1
+            $logger.info "Downloading episode for #{feedname}: #{url} to #{filename}"
 
             data = download_url(url)
             FileUtils.mkdir_p(feedname)
@@ -107,6 +138,13 @@ def process_rss(feedname, url)
             end
         end
 
+        # We've tried a few times, if the file is still too small, assume the
+        # enclosure.length is wrong
+        if not file_size_ok?(filename, item)
+            $logger.info "After a few tries, flagging size OK for #{feedname}: #{filename}"
+            FileUtils.touch("#{filename}.sizeok")
+        end
+            
         item.enclosure.url = URI::encode(base_uri + filename)
 
         # Some feeds leave this out - they really *really* shouldn't.
