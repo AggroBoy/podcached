@@ -151,6 +151,15 @@ def process_rss(feedname, url)
         item.enclosure.length = File.size?(filename) if item.enclosure.length.nil?
     end
 
+    # Write out the full feed - this is mainly for interest
+    File.open(feedname + "/feed-full", 'w') {|f| f.write(rss) }
+
+
+    # Create a feed with only the 10 most recent entries - this is what I
+    # subscribe to; it saves download and processing time at the cost of losing
+    # older episodes from the podcast client.
+    delete = rss.items.count - 10
+    rss.items.slice!(-delete, delete)
     File.open(feedname + "/feed", 'w') {|f| f.write(rss) }
 end
 
