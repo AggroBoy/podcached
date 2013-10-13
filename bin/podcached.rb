@@ -5,6 +5,7 @@ require 'open-uri'
 require 'fileutils'
 require 'yaml'
 require 'builder'
+require 'liquid'
 
 require 'lumberjack'
 require "lumberjack_syslog_device"
@@ -15,6 +16,23 @@ $logger.set_progname "podcached"
 $options = YAML.load_file("/etc/podcached/podcachedrc")
 
 $feeds = []
+
+class RSS::Element
+    def to_liquid
+        members = {
+            "title" => self.title,
+            "url" => self.enclosure.url,
+            "date" => self.pubDate.strftime("%Y-%m-%d %H:%M"),
+            "description" => self.itunes_subtitle
+        }
+
+        if ( self.itunes_duration )
+            members["duration"] = self.itunes_duration.to_s
+        end
+
+        members
+    end
+end
 
 # Allow open-uri to follow unsafe redirects (i.e. https to http).
 # # Relevant issue:
@@ -111,7 +129,7 @@ def process_rss(feedname, url)
     rss.channel.description = rss.channel.itunes_summary if rss.channel.description.empty?
     rss.channel.description = "N/A" if rss.channel.description.empty?
 
-    $feeds.push({ :feedname => feedname, :title => rss.channel.title, :link => rss.channel.link })
+    $feeds.push({ "feedname" => feedname, "title" => rss.channel.title, "link" => rss.channel.link })
 
     for item in rss.items
         next if item.enclosure.nil?
@@ -154,6 +172,13 @@ def process_rss(feedname, url)
     # Write out the full feed - this is mainly for interest
     File.open(feedname + "/feed-full", 'w') {|f| f.write(rss) }
 
+    # write out an html version of the feed, for viewing in a browser
+    @template = Liquid::Template.parse(File.read("/etc/podcached/template/feed.html"))
+    html = @template.render(
+        "name" => rss.channel.title,
+        "description" => rss.channel.description,
+        "episodes" => rss.items.select { |item| !item.enclosure.nil? })
+    File.open(feedname + "/index.html", 'w') {|f| f.write(html) }
 
     # Create a feed with only the 10 most recent entries - this is what I
     # subscribe to; it saves download and processing time at the cost of losing
@@ -182,6 +207,14 @@ feeds.each_line do |feed|
     end
 end
 
+$feeds.sort_by!{ |hash| hash["title"]}
+
+#
+@template = Liquid::Template.parse(File.read("/etc/podcached/template/feedlist.html"))
+html = @template.render({ "podcasts" => $feeds })
+File.open("index.html", 'w') {|f| f.write(html) }
+
+#
 opml_file = File.new("podcached.opml", "w")
 builder = Builder::XmlMarkup.new :target => opml_file, :indent => 2
 builder.instruct!
@@ -189,7 +222,7 @@ builder.opml :version => "1.0" do |opml|
     opml.head { |h| h.title "Podcached Podcasts" }
     opml.body do |body|
         $feeds.each do |feed|
-            body.outline :text => feed[:title], :type => "rss", :title => feed[:title], :xmlUrl => "#{$options["base_url"]}#{feed[:feedname]}/feed", :htmlUrl => feed[:link]
+            body.outline :text => feed["title"], :type => "rss", :title => feed[:title], :xmlUrl => "#{$options["base_url"]}#{feed["feedname"]}/feed", :htmlUrl => feed["link"]
         end
     end
 end

@@ -1,0 +1,15 @@
+<html>
+<head>
+<meta charset="utf-8"> 
+<title>Podcasts</title>
+<link rel="stylesheet" href="/podcached/podcached.css"/>
+</head>
+<h1>{{ Podcasts }}</h1>
+
+{% for podcast in podcasts %}
+<div class="podcast">
+    <h3 class="podcastname"><a href="{{ podcast.feedname }}/">{{ podcast.title }}</a></h3>
+</div>
+{% endfor %}
+
+</html>
