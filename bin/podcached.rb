@@ -6,6 +6,7 @@ require 'fileutils'
 require 'yaml'
 require 'builder'
 require 'liquid'
+require 'pidfile'
 
 require 'lumberjack'
 require "lumberjack_syslog_device"
@@ -187,6 +188,8 @@ def process_rss(feedname, url)
     rss.items.slice!(-delete, delete)
     File.open(feedname + "/feed", 'w') {|f| f.write(rss) }
 end
+
+pf = PidFile.new
 
 $logger.info "podcached starting"
 Dir.chdir $options["local_dir"]
